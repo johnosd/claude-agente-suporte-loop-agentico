@@ -66,7 +66,16 @@ def get_customer_info(customer_id: str) -> dict:
         "ID-123": {"nome": "João", "status": "ativo", "email": "joao@email.com"},
         "ID-456": {"nome": "Maria", "status": "bloqueado", "email": "maria@email.com"},
     }
-    return banco_fake.get(customer_id, {"erro": "cliente não encontrado"})
+    result =  banco_fake.get(customer_id)
+    
+    if result is None:
+        return {
+            "errorCategory": "validation",
+            "isRetriable": False,
+            "message": f"Cliente {customer_id} não encontrado",
+            "action": "Informe ao usuário que o cliente não foi encontrado e sugira verificar o ID do cliente ou entrar em contato com o suporte."
+        }
+    return result
 
 def get_order_info(order_number: str) -> dict:
     # Simula uma consulta a um banco de dados ou API externa
@@ -74,11 +83,32 @@ def get_order_info(order_number: str) -> dict:
         "123456": {"produto": "Smartphone", "valor": 1500, "status_entrega": "entregue"},
         "654321": {"produto": "Notebook", "valor": 3000, "status_entrega": "em trânsito"},
     }
-    return banco_fake.get(order_number, {"erro": "pedido não encontrado"})
+    result = banco_fake.get(order_number)
+
+    if result is None:
+        return {
+            "errorCategory": "validation",
+            "isRetriable": False,
+            "message": f"Pedido {order_number} não encontrado",
+            "action": "Informe ao usuário que o pedido não foi encontrado e sugira verificar o número do pedido ou entrar em contato com o suporte."
+        }
+    
+    return result
 
 def process_refund(order_number: str, amount: float) -> dict:
     # Simula o processamento de um reembolso
-    return {"status": "reembolso processado", "order_number": order_number, "amount": amount}
+    banco_fake = {
+        "123456": {"status": "reembolso processado", "order_number": "123456", "amount": 3000},
+    }
+    
+    result = banco_fake.get(order_number)
+
+    return banco_fake.get(order_number, {
+        "errorCategory": "business",
+        "isRetriable": False,
+        "message": f"Pedido {order_number} não encontrado",
+        "action": "Informe ao usuário que o pedido não foi encontrado e sugira verificar o número do pedido ou entrar em contato com o suporte."
+    })
 
 def run_agent(user_message: str):
     messages = [{"role": "user", "content": user_message}]

@@ -5,7 +5,9 @@
       "Bash(pwd:*)",
       "Bash(\"C:/Users/johns/Documents/Projetos/Claude Code Pratice/claude_certified/claude_agent_1/venv/Scripts/pip.exe\" install anthropic 2>&1)",
       "mcp__ide__executeCode",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(gh auth:*)",
+      "Bash(git:*)"
     ]
   }
 }
