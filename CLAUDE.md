@@ -42,3 +42,21 @@ The tool definitions (JSON schema) and their implementations (Python functions) 
 ### Model
 
 Uses `claude-opus-4-5` with `max_tokens=1024`.
+
+
+## Workflow de commit e PR
+
+Quando eu pedir para fazer commit e push, siga este fluxo:
+
+1. `git add .`
+2. `git commit -m "mensagem seguindo conventional commits"`
+3. `git push origin <branch-atual>`
+4. `gh pr create --title "<mesmo título do commit>" --body "<descrição do que foi feito>" --base main`
+
+Se já estiver na main, pule o passo 4.
+Se a branch não existir no remoto ainda, use `git push -u origin <branch>`.
+```
+
+Com isso, quando você disser *"faz o commit e abre PR"*, o Claude Code já sabe o fluxo completo.
+
+---

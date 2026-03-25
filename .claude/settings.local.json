@@ -7,7 +7,16 @@
       "mcp__ide__executeCode",
       "Bash(python:*)",
       "Bash(gh auth:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/test_agent.py -v)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(./venv/Scripts/pytest tests/test_agent.py -v)",
+      "Bash(venv/Scripts/python.exe -c \"import pytest; print\\(pytest.__version__\\)\")",
+      "Bash(venv/Scripts/python.exe -m pytest tests/test_agent.py --tb=short)",
+      "Read(//tmp/**)",
+      "Bash(venv/Scripts/python.exe tests/test_agent.py)",
+      "Bash(venv/Scripts/python.exe -c \"print\\(''hello''\\)\")",
+      "Skill(claude-api)"
     ]
   }
 }
