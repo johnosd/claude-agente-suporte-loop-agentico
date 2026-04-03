@@ -123,10 +123,48 @@ def pre_tool_hook(tool_name: str, tool_input:dict) -> dict | None:
             }
     return None
 
+def execute_tool(
+        tool_name: str, 
+        tool_input: dict, 
+        client_verification: bool, 
+        verified_customer_data: dict | None 
+        ) -> dict:
+    
+    hook_result = pre_tool_hook(tool_name, tool_input)
+
+    if hook_result is not None:
+        return hook_result
+
+    if tool_name == "get_customer":
+        return get_customer_info(tool_input["customer_id"])
+
+    elif tool_name == "lookup_order":
+        return get_order_info(tool_input["order_number"])
+
+    elif tool_name == "process_refund":
+        if not client_verification:
+            return {
+                "errorCategory": "validation",
+                "isRetryable": False,
+                "message": "Cliente não verificado. Por favor, verifique o cliente antes de processar o reembolso.",
+                "action": "Informe ao usuário que o cliente precisa ser verificado antes de processar o reembolso e sugira verificar o status do cliente ou entrar em contato com o suporte."
+                }
+        elif verified_customer_data.get("status")== "bloqueado":
+            return{
+                "errorCategory": "business",
+                "isRetryable": False,
+                "message": "Cliente bloqueado. Não é possível processar o reembolso.",
+                "action": "Informe ao usuário que o cliente está bloqueado e não é possível processar o reembolso. Sugira entrar em contato com o suporte para mais informações."
+            }
+        else:
+            return process_refund(tool_input["order_number"], tool_input["amount"])
+
 def run_agent(user_message: str):
+    
     messages = [{"role": "user", "content": user_message}]
-    client_verification = False  # flag para verificar se cliente foi validado com sucesso
-    verified_customer_data = None  # para armazenar dados do cliente verificado, se necessário
+    client_verification = False
+    verified_customer_data = None
+    
     while True:
         response = client.messages.create(
             model="claude-opus-4-5",
@@ -135,13 +173,10 @@ def run_agent(user_message: str):
             messages=messages
         )
 
-        # SEU CÓDIGO AQUI:
-        # 1. verificar response.stop_reason
-        # 2. se "end_turn" → imprimir resposta e retornar
         if response.stop_reason == "end_turn":
             print(response.content[0].text)
             return response
-        # 3. se "tool_use" → extrair o tool call, executar, adicionar resultado
+
         elif response.stop_reason == "tool_use":
             messages.append({
                 "role": "assistant",
@@ -152,46 +187,21 @@ def run_agent(user_message: str):
 
             for block in response.content:
                 if block.type == "tool_use":
-                    tool_name = block.name
-                    tool_input = block.input   # já é um dict
-                    tool_use_id = block.id     # você vai precisar disso
+                    result = execute_tool(
+                        tool_name = block.name,
+                        tool_input = block.input,
+                        client_verification = client_verification,
+                        verified_customer_data = verified_customer_data
+                    )
 
-                    hook_result = pre_tool_hook(tool_name, tool_input)
-                    if hook_result is not None:
-                        result = hook_result
-                    else:
-
-                        if tool_name == "get_customer":
-                            result = get_customer_info(tool_input["customer_id"])
-                            # se retornou cliente válido (sem errorCategory), marcar como verificado
-                            if "errorCategory" not in result:
-                                client_verification = True
-                                verified_customer_data = result  # ← guarda aqui
-
-                        elif tool_name == "lookup_order":
-                            result = get_order_info(tool_input["order_number"])
-
-                        elif tool_name == "process_refund":
-                            if not client_verification:
-                                result = {
-                                    "errorCategory": "validation",
-                                    "isRetryable": False,
-                                    "message": "Cliente não verificado. Por favor, verifique o cliente antes de processar o reembolso.",
-                                    "action": "Informe ao usuário que o cliente precisa ser verificado antes de processar o reembolso e sugira verificar o status do cliente ou entrar em contato com o suporte."
-                                }
-                            elif verified_customer_data.get("status")== "bloqueado":
-                                result = {
-                                    "errorCategory": "business",
-                                    "isRetryable": False,
-                                    "message": "Cliente bloqueado. Não é possível processar o reembolso.",
-                                    "action": "Informe ao usuário que o cliente está bloqueado e não é possível processar o reembolso. Sugira entrar em contato com o suporte para mais informações."
-                                }
-                            else:
-                                result = process_refund(tool_input["order_number"], tool_input["amount"])
+                    # atualiza estado se get_custormer retornou cliente válido
+                    if block.name == "get_customer" and "errorCategory" not in result:
+                        client_verification = True
+                        verified_customer_data = result
 
                     tool_results.append({   # ← adiciona ao invés de sobrescrever
                         "type": "tool_result",
-                        "tool_use_id": tool_use_id,
+                        "tool_use_id": block.id,
                         "content": str(result)
                     })
 
@@ -203,14 +213,14 @@ def run_agent(user_message: str):
             
 
 if __name__ == "__main__":
-    # print("--- TESTE A: reembolso sem verificar cliente primeiro ---")
-    # run_agent("Processe reembolso de 1500 para o pedido 123456")
-    # 
-    # print("--- TESTE B: cliente bloqueado tenta reembolso ---")
-    # run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456")
-    # 
-    # print("--- TESTE C: cliente ativo consegue reembolso ---")
-    # run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456")
+    print("--- TESTE A: reembolso sem verificar cliente primeiro ---")
+    run_agent("Processe reembolso de 1500 para o pedido 123456")
+    
+    print("--- TESTE B: cliente bloqueado tenta reembolso ---")
+    run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456")
+    
+    print("--- TESTE C: cliente ativo consegue reembolso ---")
+    run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456")
 
     # Hooks
     print("--- TESTE HOOK A: reembolso acima de 500 (deve bloquear) ---")
