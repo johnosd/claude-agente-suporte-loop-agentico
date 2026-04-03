@@ -110,6 +110,19 @@ def process_refund(order_number: str, amount: float) -> dict:
         "action": "Informe ao usuário que o pedido não foi encontrado e sugira verificar o número do pedido ou entrar em contato com o suporte."
     })
 
+def pre_tool_hook(tool_name: str, tool_input:dict) -> dict | None:
+    # Exemplo de pré-validação para process_refund
+    amount = tool_input.get("amount")
+    if tool_name == "process_refund" and amount > 500:
+        # retornar erro estruturado para o modelo, para modelo escalar para interacao humana.
+            return {
+                "errorCategory": "business",
+                "isRetryable": False,
+                "message": f"Valor do reembolso {amount} excede o limite permitido de 500.",
+                "action": "Informe ao usuário que o valor do reembolso excede o limite permitido e sugira fornecer um valor menor ou entrar em contato com o suporte para casos especiais."
+            }
+    return None
+
 def run_agent(user_message: str):
     messages = [{"role": "user", "content": user_message}]
     client_verification = False  # flag para verificar se cliente foi validado com sucesso
@@ -143,33 +156,38 @@ def run_agent(user_message: str):
                     tool_input = block.input   # já é um dict
                     tool_use_id = block.id     # você vai precisar disso
 
-                    if tool_name == "get_customer":
-                        result = get_customer_info(tool_input["customer_id"])
-                        # se retornou cliente válido (sem errorCategory), marcar como verificado
-                        if "errorCategory" not in result:
-                            client_verification = True
-                            verified_customer_data = result  # ← guarda aqui
+                    hook_result = pre_tool_hook(tool_name, tool_input)
+                    if hook_result is not None:
+                        result = hook_result
+                    else:
 
-                    elif tool_name == "lookup_order":
-                        result = get_order_info(tool_input["order_number"])
+                        if tool_name == "get_customer":
+                            result = get_customer_info(tool_input["customer_id"])
+                            # se retornou cliente válido (sem errorCategory), marcar como verificado
+                            if "errorCategory" not in result:
+                                client_verification = True
+                                verified_customer_data = result  # ← guarda aqui
 
-                    elif tool_name == "process_refund":
-                        if not client_verification:
-                            result = {
-                                "errorCategory": "validation",
-                                "isRetryable": False,
-                                "message": "Cliente não verificado. Por favor, verifique o cliente antes de processar o reembolso.",
-                                "action": "Informe ao usuário que o cliente precisa ser verificado antes de processar o reembolso e sugira verificar o status do cliente ou entrar em contato com o suporte."
-                            }
-                        elif verified_customer_data.get("status")== "bloqueado":
-                            result = {
-                                "errorCategory": "business",
-                                "isRetryable": False,
-                                "message": "Cliente bloqueado. Não é possível processar o reembolso.",
-                                "action": "Informe ao usuário que o cliente está bloqueado e não é possível processar o reembolso. Sugira entrar em contato com o suporte para mais informações."
-                            }
-                        else:
-                            result = process_refund(tool_input["order_number"], tool_input["amount"])
+                        elif tool_name == "lookup_order":
+                            result = get_order_info(tool_input["order_number"])
+
+                        elif tool_name == "process_refund":
+                            if not client_verification:
+                                result = {
+                                    "errorCategory": "validation",
+                                    "isRetryable": False,
+                                    "message": "Cliente não verificado. Por favor, verifique o cliente antes de processar o reembolso.",
+                                    "action": "Informe ao usuário que o cliente precisa ser verificado antes de processar o reembolso e sugira verificar o status do cliente ou entrar em contato com o suporte."
+                                }
+                            elif verified_customer_data.get("status")== "bloqueado":
+                                result = {
+                                    "errorCategory": "business",
+                                    "isRetryable": False,
+                                    "message": "Cliente bloqueado. Não é possível processar o reembolso.",
+                                    "action": "Informe ao usuário que o cliente está bloqueado e não é possível processar o reembolso. Sugira entrar em contato com o suporte para mais informações."
+                                }
+                            else:
+                                result = process_refund(tool_input["order_number"], tool_input["amount"])
 
                     tool_results.append({   # ← adiciona ao invés de sobrescrever
                         "type": "tool_result",
@@ -185,11 +203,18 @@ def run_agent(user_message: str):
             
 
 if __name__ == "__main__":
-    print("--- TESTE A: reembolso sem verificar cliente primeiro ---")
-    run_agent("Processe reembolso de 1500 para o pedido 123456")
+    # print("--- TESTE A: reembolso sem verificar cliente primeiro ---")
+    # run_agent("Processe reembolso de 1500 para o pedido 123456")
+    # 
+    # print("--- TESTE B: cliente bloqueado tenta reembolso ---")
+    # run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456")
+    # 
+    # print("--- TESTE C: cliente ativo consegue reembolso ---")
+    # run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456")
 
-    print("--- TESTE B: cliente bloqueado tenta reembolso ---")
-    run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456")
-
-    print("--- TESTE C: cliente ativo consegue reembolso ---")
+    # Hooks
+    print("--- TESTE HOOK A: reembolso acima de 500 (deve bloquear) ---")
     run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456")
+
+    print("--- TESTE HOOK B: reembolso abaixo de 500 (deve processar) ---")
+    run_agent("Sou o João ID-123, quero reembolso de 200 do pedido 123456")
