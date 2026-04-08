@@ -158,10 +158,20 @@ def execute_tool(
             }
         else:
             return process_refund(tool_input["order_number"], tool_input["amount"])
+        
+def add_user_message(messages, text):
+    user_message = {"role": "user", "content": text}
+    messages.append(user_message)
+
+def add_assistant_message(messages, text):
+    assistant_message = {"role": "assistant", "content": text}
+    messages.append(assistant_message)
 
 def run_agent(user_message: str):
     
-    messages = [{"role": "user", "content": user_message}]
+    messages = []
+    add_user_message(messages, user_message)
+
     client_verification = False
     verified_customer_data = None
     
@@ -178,10 +188,7 @@ def run_agent(user_message: str):
             return response
 
         elif response.stop_reason == "tool_use":
-            messages.append({
-                "role": "assistant",
-                "content": response.content  # passa a lista inteira de blocos
-            })
+            add_assistant_message(messages, response.content)
 
             tool_results = []  # ← coleta todos os resultados
 
@@ -205,10 +212,7 @@ def run_agent(user_message: str):
                         "content": str(result)
                     })
 
-            messages.append({
-            "role": "user",
-            "content": tool_results  # ← devolve todos de uma vez
-            })
+            add_user_message(messages, tool_results)
 
             
 
