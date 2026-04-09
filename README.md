@@ -1,151 +1,172 @@
-# Claude Agente de Suporte — Loop Agêntico
+# Claude Agente de Suporte - Loop Agentico
 
-Projeto de estudo para a certificação **Claude Certified Architect – Foundations**.
-Implementa um agente de atendimento ao cliente com loop agêntico usando a API do Claude (Anthropic).
+Projeto de estudo para a certificacao **Claude Certified Architect - Foundations**.
 
-O agente interpreta mensagens do usuário, decide quais ferramentas usar, aplica regras de negócio
-e executa ações de suporte de forma autônoma até concluir a tarefa ou escalar para um humano.
+O repositorio implementa um agente de suporte ao cliente com ferramentas, loop agentico e regras deterministicas para controlar operacoes sensiveis como reembolso.
 
----
+## Objetivo do projeto
 
-## Como funciona
+O fluxo principal e:
 
-```
-Mensagem do usuário
-        ↓
-   Claude analisa
-        ↓
-stop_reason == "tool_use"?
-        ↓ sim
-  pre_tool_hook()          → bloqueia se violar regra de negócio (ex: valor > R$500)
-        ↓ passou
-  execute_tool()           → roteia para a ferramenta correta
-        ↓
-  prerequisite gate        → bloqueia process_refund se cliente não verificado
-        ↓
-  envia tool_result        → histórico atualizado, nova iteração
-        ↓
-stop_reason == "end_turn"
-        ↓
-   Resposta final ao usuário
-```
+1. receber a mensagem do usuario;
+2. enviar o historico ao modelo Claude;
+3. executar ferramentas quando o modelo retornar `stop_reason == "tool_use"`;
+4. aplicar validacoes de negocio antes da execucao real;
+5. devolver `tool_result` ao modelo;
+6. repetir o ciclo ate `stop_reason == "end_turn"`.
 
-A cada iteração, o histórico completo de mensagens é enviado ao Claude.
-Claude pode chamar múltiplas ferramentas em paralelo numa única iteração.
+## Arquitetura atual
 
----
+O codigo relevante esta concentrado em [app/agent.py](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\app\agent.py).
 
-## Arquitetura do código
+- `run_agent()`: orquestra o loop, monta o historico e chama a API da Anthropic.
+- `execute_tool()`: roteia chamadas de ferramenta e aplica gates de negocio.
+- `pre_tool_hook()`: bloqueia reembolsos acima de `500` antes da execucao da ferramenta.
+- `get_customer_info()`: consulta mockada de clientes.
+- `get_order_info()`: consulta mockada de pedidos.
+- `process_refund()`: simulacao de reembolso.
 
-```
-run_agent()        — orquestração pura: loop, stop_reason, histórico de mensagens
-execute_tool()     — roteamento e execução das ferramentas com regras de negócio
-pre_tool_hook()    — interceptação antes da execução (compliance determinístico)
-get_customer_info()  — simula consulta ao banco de clientes
-get_order_info()     — simula consulta ao banco de pedidos
-process_refund()     — simula processamento de reembolso
-```
+As ferramentas expostas ao modelo sao:
 
----
+| Ferramenta | Funcao |
+|---|---|
+| `get_customer` | Busca dados do cliente pelo ID |
+| `lookup_order` | Busca dados do pedido |
+| `process_refund` | Processa reembolso |
 
-## Ferramentas disponíveis
+## Regras de negocio implementadas
 
-| Ferramenta | Quando usar | Não usar para |
-|---|---|---|
-| `get_customer` | Buscar nome, email, status do cliente por ID | Pedidos ou ações |
-| `lookup_order` | Buscar produto, valor, status de entrega por número do pedido | Dados do cliente |
-| `process_refund` | Executar reembolso (exige cliente verificado) | Consultas |
+- `process_refund` so deve seguir apos verificacao do cliente.
+- Cliente com status `bloqueado` nao pode receber reembolso.
+- `pre_tool_hook()` bloqueia qualquer reembolso acima de `500`.
+- Erros retornam um objeto estruturado com `errorCategory`, `isRetryable`, `message` e `action`.
 
-Os dados são simulados com dicionários em memória (`app/agent.py`).
-
----
-
-## Regras de negócio implementadas
-
-- **Prerequisite gate:** `process_refund` só executa após `get_customer` retornar cliente válido
-- **Bloqueio por status:** clientes com status `bloqueado` não podem receber reembolso
-- **Limite por valor:** reembolsos acima de R$500 são bloqueados pelo hook e redirecionados para suporte
-- **Erros estruturados:** todas as ferramentas retornam `errorCategory`, `isRetryable`, `message` e `action`
-
----
-
-## Erros estruturados
-
-Quando uma operação falha, as ferramentas retornam um dict estruturado:
+Exemplo de erro estruturado:
 
 ```python
 {
-    "errorCategory": "validation" | "business" | "permission" | "transient",
+    "errorCategory": "validation",
     "isRetryable": False,
-    "message": "Descrição legível do erro",
-    "action": "O que Claude deve fazer a seguir"
+    "message": "Cliente ID-999 nao encontrado",
+    "action": "Informe ao usuario que o cliente nao foi encontrado..."
 }
 ```
 
-Isso permite que Claude tome decisões de recuperação adequadas em vez de travar.
+## Comportamento observado na revisao
 
----
+Durante a revisao do codigo e dos testes, estes pontos ficaram claros:
 
-## Instalação
+- O prompt de sistema existe em `SYSTEM_PROMPT`, mas `run_agent()` so o usa quando o chamador passa `system=...`.
+- O hook de valor roda antes da logica de verificacao do cliente, entao qualquer reembolso acima de `500` e bloqueado imediatamente.
+- O caminho de sucesso real hoje exige cliente valido, cliente ativo e valor de reembolso menor ou igual a `500`.
+- A simulacao de `process_refund()` so reconhece o pedido `123456`.
+- A resposta mockada de `process_refund()` para sucesso devolve `amount: 3000`, independentemente do valor solicitado. Isso e uma limitacao atual do mock.
+- O repositorio possui testes em [tests/test_agent.py](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\tests\test_agent.py), mas `pytest` nao esta listado em [requirements.txt](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\requirements.txt).
+
+## Estrutura do projeto
+
+```text
+app/
+  agent.py
+tests/
+  test_agent.py
+requirements.txt
+setup_env.sh
+README.md
+```
+
+## Requisitos
+
+- Python 3.10+
+- chave `ANTHROPIC_API_KEY`
+
+Dependencias atuais do projeto:
+
+```text
+anthropic==0.84.0
+python-dotenv
+```
+
+Para rodar os testes deste repositorio, instale tambem:
+
+```bash
+pip install pytest
+```
+
+## Instalacao
 
 ```bash
 git clone <url-do-repositorio>
 cd claude-agente-suporte-loop-agentico
-
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+```
 
+Ativacao da virtualenv:
+
+- Linux/macOS: `source venv/bin/activate`
+- Windows PowerShell: `.\venv\Scripts\Activate.ps1`
+
+Instale as dependencias:
+
+```bash
 pip install -r requirements.txt
+pip install pytest
 ```
 
 Crie um arquivo `.env` na raiz:
 
-```
+```env
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
----
+Opcionalmente, use o script [setup_env.sh](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\setup_env.sh) em ambientes Unix-like para recriar a virtualenv e instalar dependencias.
 
-## Uso
+## Execucao
+
+Executar o script principal:
 
 ```bash
 python app/agent.py
-pytest
 ```
 
----
+O bloco `__main__` roda alguns cenarios de exemplo e passa `system=SYSTEM_PROMPT`.
 
-## Cenários de teste
+Se quiser usar `run_agent()` diretamente, passe o prompt de sistema explicitamente para manter o comportamento esperado:
 
-| Teste | Mensagem | Resultado esperado |
+```python
+from app.agent import run_agent, SYSTEM_PROMPT
+
+run_agent(
+    "Sou o Joao ID-123, quero reembolso de 200 do pedido 123456",
+    system=SYSTEM_PROMPT,
+)
+```
+
+## Testes
+
+Suite atual:
+
+- [tests/test_agent.py](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\tests\test_agent.py)
+
+Execucao:
+
+```bash
+pytest -q tests
+```
+
+Observacao importante: no ambiente revisado, `pytest` nao estava instalado nem no Python global nem na `venv`, entao a suite nao pode ser executada sem instalar essa dependencia antes.
+
+## Cenarios coerentes com o codigo atual
+
+| Cenario | Entrada | Resultado esperado pelo codigo |
 |---|---|---|
-| A | "Processe reembolso de 1500 para o pedido 123456" | Hook bloqueia: valor > R$500 |
-| B | "Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456" | Gate bloqueia: cliente bloqueado |
-| C | "Sou o João ID-123, quero reembolso de 1500 do pedido 123456" | Hook bloqueia: valor > R$500 |
-| Hook A | "Sou o João ID-123, quero reembolso de 1500 do pedido 123456" | Bloqueado por threshold |
-| Hook B | "Sou o João ID-123, quero reembolso de 200 do pedido 123456" | Reembolso processado ✅ |
+| Reembolso sem verificacao | `Processe reembolso de 200 para o pedido 123456` | bloqueio por cliente nao verificado |
+| Cliente bloqueado | `Sou a Maria ID-456, quero reembolso de 200 do pedido 123456` | bloqueio por regra de negocio |
+| Valor acima do limite | `Sou o Joao ID-123, quero reembolso de 1500 do pedido 123456` | bloqueio no `pre_tool_hook()` |
+| Fluxo permitido | `Sou o Joao ID-123, quero reembolso de 200 do pedido 123456` | tentativa de processamento com mock de sucesso |
 
----
+## Observacoes de manutencao
 
-## Estrutura
-
-```
-app/
-└── agent.py       # Loop agêntico, ferramentas, hooks e regras de negócio
-tests/
-└── test_agent.py  # Testes automatizados
-requirements.txt
-.env               # Não commitado — contém ANTHROPIC_API_KEY
-```
-
----
-
-## Conceitos praticados (Claude Certified Architect)
-
-| Task Statement | Conceito |
-|---|---|
-| 1.1 | Loop agêntico com `stop_reason` ("tool_use" vs "end_turn") |
-| 1.4 | Prerequisite gates vs prompt instructions para compliance crítico |
-| 1.5 | PreToolUse hooks para garantias determinísticas |
-| 2.1 | Descrições de ferramentas diferenciadas para seleção confiável |
-| 2.2 | Erros estruturados com categoria, retryable e action |
+- Ha sinais de problema de encoding em arquivos textuais exibidos no terminal atual.
+- Os testes documentam intencoes do fluxo, mas pelo menos um deles parece divergir da implementacao atual do hook de valor.
+- Se a intencao for usar este repositorio como referencia de arquitetura, vale alinhar mocks, testes e README antes de expandir o projeto.
