@@ -5,6 +5,10 @@ load_dotenv()
 
 client = anthropic.Anthropic()
 
+SYSTEM_PROMPT = """Você é um agente de suporte ao cliente especializado.
+Sempre verifique a identidade do cliente antes de processar reembolsos.
+Seja educado, conciso e proativo em resolver os problemas do cliente."""
+
 tools = [
     {
         "name": "get_customer",
@@ -167,21 +171,31 @@ def add_assistant_message(messages, text):
     assistant_message = {"role": "assistant", "content": text}
     messages.append(assistant_message)
 
-def run_agent(user_message: str):
-    
+def run_agent(
+    user_message: str,
+    model: str = "claude-opus-4-5",
+    max_tokens: int = 1024,
+    temperature: float = 1.0,
+    system: str = None,
+):
+
     messages = []
     add_user_message(messages, user_message)
 
     client_verification = False
     verified_customer_data = None
-    
+
+    params = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "tools": tools,
+    }
+    if system:
+        params["system"] = system
+
     while True:
-        response = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens =1024,
-            tools=tools,
-            messages=messages
-        )
+        response = client.messages.create(**params, messages=messages)
 
         if response.stop_reason == "end_turn":
             print(response.content[0].text)
@@ -217,18 +231,23 @@ def run_agent(user_message: str):
             
 
 if __name__ == "__main__":
+    parameters = {
+        "temperature": 1.0,
+        "system": SYSTEM_PROMPT,
+    }
+
     print("--- TESTE A: reembolso sem verificar cliente primeiro ---")
-    run_agent("Processe reembolso de 1500 para o pedido 123456")
-    
+    run_agent("Processe reembolso de 1500 para o pedido 123456", **parameters)
+
     print("--- TESTE B: cliente bloqueado tenta reembolso ---")
-    run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456")
-    
+    run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456", **parameters)
+
     print("--- TESTE C: cliente ativo consegue reembolso ---")
-    run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456")
+    run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456", **parameters)
 
     # Hooks
     print("--- TESTE HOOK A: reembolso acima de 500 (deve bloquear) ---")
-    run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456")
+    run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456", **parameters)
 
     print("--- TESTE HOOK B: reembolso abaixo de 500 (deve processar) ---")
-    run_agent("Sou o João ID-123, quero reembolso de 200 do pedido 123456")
+    run_agent("Sou o João ID-123, quero reembolso de 200 do pedido 123456", **parameters)
