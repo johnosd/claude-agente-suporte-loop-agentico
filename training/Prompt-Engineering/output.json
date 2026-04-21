@@ -1,0 +1,64 @@
+[
+  {
+    "output": "# Nutrition Plan for Muscle Gain & Strength Training\n\n## Daily Caloric Target\n**~2,800-3,000 calories/day** (slight surplus for muscle growth)\n\n---\n\n## Macronutrient Breakdown\n\n| Macro | Target | Purpose |\n|-------|--------|---------|\n| **Protein** | 170-190g (1.9-2.2g/kg) | Muscle repair & growth |\n| **Carbs** | 350-400g | Energy for training |\n| **Fats** | 90-100g | Hormone production |\n\n---\n\n## Food Priorities\n\n### Protein Sources\n- Chicken, turkey, lean beef\n- Fish (salmon, cod)\n- Eggs\n- Greek yogurt, cottage cheese\n- Whey protein powder\n\n### Carbohydrates\n- Oats, brown rice, sweet potatoes\n- Whole grain bread/pasta\n- Fruits (bananas, berries)\n- White rice (post-workout)\n\n### Healthy Fats\n- Olive oil, avocado\n- Nuts and seeds\n- Fatty fish\n\n---\n\n## Meal Timing Tips\n- **Post-workout**: Carbs + protein within 1-2 hours\n- **Spread protein**: Aim for 30-40g per meal\n- **Stay hydrated**: 3-4L water daily\n\n---\n\n**Note**: Individual needs vary. Consider consulting a nutritionist for personalized adjustments based on progress.",
+    "test_case": {
+      "prompt_inputs": {
+        "height": "180",
+        "weight": "85",
+        "goal": "muscle gain for strength training",
+        "restrictions": "none"
+      },
+      "solution_criteria": [
+        "Meal plan contains 4-5 meals distributed throughout the day with at least one meal timed within 2 hours before or after training",
+        "Daily protein intake is at least 1.6g per kilogram of body weight (136g minimum)",
+        "Meals are concise and practical to prepare, suitable for a single day"
+      ],
+      "task_description": "Write a compact, concise 1 day meal plan for a single athlete",
+      "scenario": "Testing with a strength/power athlete (weightlifter) needing protein-heavy macro distribution with strategic meal timing around intense training sessions"
+    },
+    "score": 2,
+    "reasoning": "The solution violates all three mandatory requirements. While it provides daily caloric total and macronutrient breakdown, it completely fails to deliver the core requirement: 'Meals with exact foods, portions, and timing.' The output is a general nutrition framework rather than an actual 1-day meal plan. It lacks 4-5 specific meals distributed throughout the day, no exact portions are given (e.g., '150g chicken breast'), and no specific meal times are provided. The task explicitly asks for a '1 day meal plan' with 'exact foods, portions, and timing,' which this solution does not contain. This is a fundamental failure to meet the mandatory requirements."
+  },
+  {
+    "output": "# Marathon Race Day Nutrition Plan\n\n## Daily Calorie Target\n**~3,000-3,200 calories** (elevated for training + carb-loading)\n\n## Macronutrient Breakdown\n\n| Macro | Target | Purpose |\n|-------|--------|---------|\n| **Carbs** | 55-60% (450-500g) | Maximize glycogen stores |\n| **Protein** | 15-20% (110-130g) | Muscle recovery |\n| **Fat** | 20-25% (70-90g) | Sustained energy |\n\n## Sample Daily Menu\n\n### Breakfast\n- 2 cups oatmeal with honey\n- 2 slices white toast with jam\n- Banana\n- Glass of orange juice\n\n### Mid-Morning Snack\n- Rice cakes with peanut butter\n- Apple\n- Sports drink (500ml)\n\n### Lunch\n- 200g pasta with tomato sauce\n- 150g lean chicken breast\n- White rice (1 cup cooked)\n- Small salad\n\n### Afternoon Snack\n- Energy bar or bagel with jam\n- Dates\n- Sports drink\n\n### Dinner\n- 180g salmon or lean beef\n- Sweet potato (large)\n- White rice or noodles\n- Vegetables\n\n### Evening Snack\n- Greek yogurt with granola\n- Banana\n\n## Key Tips\n\u2713 Emphasize **white carbs** (pasta, white rice, bread) for easy digestion  \n\u2713 Keep fiber moderate (avoid excessive roughage 2-3 days before)  \n\u2713 Stay hydrated: **3-4 liters water daily**  \n\u2713 Test everything during training\u2014no surprises race day!",
+    "test_case": {
+      "prompt_inputs": {
+        "height": "180 cm",
+        "weight": "72 kg",
+        "goal": "Marathon race day preparation with carb-loading for endurance",
+        "restrictions": "None"
+      },
+      "solution_criteria": [
+        "Meal plan totals 3500+ calories to meet high-endurance athlete needs",
+        "Carbohydrates comprise 60-65% of total calories for glycogen loading",
+        "Plan is formatted as a single day with distinct meals (breakfast, lunch, dinner, snacks)",
+        "Meals are practical and compact without excessive detail or preparation time"
+      ],
+      "task_description": "Write a compact, concise 1 day meal plan for a single athlete",
+      "scenario": "Testing with a high-endurance athlete (marathon runner) requiring 3500+ calories with specific carb-loading needs for race day preparation"
+    },
+    "score": 5,
+    "reasoning": "The solution meets the mandatory requirement of including daily caloric total, macronutrient breakdown, and meals with portions. However, it fails the secondary criterion requiring 3,500+ calories\u2014the stated target of 3,000-3,200 is approximately 300-500 calories short. Additionally, the carbohydrate percentage (55-60%) falls below the specified 60-65% range. The meal plan is well-formatted and practical, but these quantitative shortfalls against explicit criteria are significant deficiencies. The solution demonstrates good structure and understanding but misses key numerical targets."
+  },
+  {
+    "output": "# Nutrition Plan for Dual Training Sessions\n\n## Daily Calorie Target\n**~2,800-3,000 calories** (adjust based on training intensity)\n\n---\n\n## Meal Structure\n\n### **Breakfast** (7-8 AM)\n- Oatmeal with berries + honey\n- 3 whole eggs + 1 toast\n- Greek yogurt\n- *~700 cal*\n\n### **Mid-Morning Snack** (10-11 AM)\n- Banana + almond butter\n- Protein shake (whey + oats)\n- *~300 cal*\n\n### **Lunch** (12-1 PM)\n- Grilled chicken/fish (150g)\n- Brown rice or sweet potato\n- Vegetables (broccoli, spinach)\n- Olive oil drizzle\n- *~700 cal*\n\n### **Pre-Evening Training** (3-4 PM)\n- Rice cakes + honey\n- Apple + banana\n- *~200 cal*\n\n### **Dinner** (7-8 PM)\n- Lean protein (beef/salmon, 150g)\n- Pasta or potatoes\n- Salad with olive oil\n- *~700 cal*\n\n### **Evening Snack** (optional)\n- Cottage cheese or casein shake\n- *~200 cal*\n\n---\n\n## Key Macros (Daily)\n- **Protein:** 130-150g (1.7-2g per kg)\n- **Carbs:** 350-400g (recovery between sessions)\n- **Fat:** 80-100g\n\n**Stay hydrated** (3-4L water daily). Adjust portions based on performance and recovery.",
+    "test_case": {
+      "prompt_inputs": {
+        "height": "183 cm",
+        "weight": "78 kg",
+        "goal": "maintain peak performance and recovery between morning and evening training sessions",
+        "restrictions": "none"
+      },
+      "solution_criteria": [
+        "Meal plan covers full day with breakfast, lunch, pre/post-workout nutrition, and dinner",
+        "Includes hydration strategy and timing aligned with morning and evening soccer training sessions",
+        "Provides balanced macronutrients (carbs for energy, protein for recovery, healthy fats) appropriate for endurance and intermittent intensity sport",
+        "Meal plan is presented in compact, easy-to-read format suitable for quick reference"
+      ],
+      "task_description": "Write a compact, concise 1 day meal plan for a single athlete",
+      "scenario": "Testing with a sport-specific athlete (professional soccer player) requiring balanced nutrition that accounts for practice schedule, hydration needs, and recovery between morning and evening sessions"
+    },
+    "score": 7,
+    "reasoning": "The solution successfully meets all three mandatory requirements: daily caloric total is provided (2,800-3,000 cal), macronutrient breakdown is detailed (130-150g protein, 350-400g carbs, 80-100g fat), and meals include timing and foods. The format is compact and readable. However, the solution has notable gaps in specificity\u2014portion sizes are missing for key meals (oatmeal, vegetables), and the meal plan doesn't explicitly address post-training nutrition windows or distinguish between morning/evening sessions despite the goal mentioning both. These deficiencies impact practical implementation but do not violate mandatory requirements. The plan is nutritionally sound and appropriately structured for an athlete with dual training sessions."
+  }
+]
