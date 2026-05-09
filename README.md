@@ -1,97 +1,246 @@
 # Claude Agente de Suporte - Loop Agentico
 
-Projeto de estudo para a certificacao **Claude Certified Architect - Foundations**.
+Implementa um agente de suporte ao cliente com loop agentico, ferramentas, validacoes deterministicas, backoff com retry e escalacao para humanos.
 
-O repositorio implementa um agente de suporte ao cliente com ferramentas, loop agentico e regras deterministicas para controlar operacoes sensiveis como reembolso.
+---
 
-## Objetivo do projeto
+## Implementacoes por etapa
 
-O fluxo principal e:
+| Etapa | Conceito | Task Statement |
+|-------|----------|----------------|
+| 1 | Loop agentico com `stop_reason` | 1.1 |
+| 2 | Ferramentas com descricoes diferenciadas | 2.1 |
+| 3 | Erros estruturados + prerequisite gate | 1.4, 2.2 |
+| 4 | PreToolUse hook por threshold | 1.5 |
+| 5 | Escalacao com handoff estruturado | 1.4 |
+| 5.5 | Exponential backoff com jitter | 2.2 |
 
-1. receber a mensagem do usuario;
-2. enviar o historico ao modelo Claude;
-3. executar ferramentas quando o modelo retornar `stop_reason == "tool_use"`;
-4. aplicar validacoes de negocio antes da execucao real;
-5. devolver `tool_result` ao modelo;
-6. repetir o ciclo ate `stop_reason == "end_turn"`.
+---
 
-## Arquitetura atual
+## Etapa 1 — Loop agentico com `stop_reason`
 
-O codigo relevante esta concentrado em [app/agent.py](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\app\agent.py).
+`run_agent()` em [app/agent.py](app/agent.py) implementa o ciclo:
 
-- `run_agent()`: orquestra o loop, monta o historico e chama a API da Anthropic.
-- `execute_tool()`: roteia chamadas de ferramenta e aplica gates de negocio.
-- `pre_tool_hook()`: bloqueia reembolsos acima de `500` antes da execucao da ferramenta.
-- `get_customer_info()`: consulta mockada de clientes.
-- `get_order_info()`: consulta mockada de pedidos.
-- `process_refund()`: simulacao de reembolso.
+1. Envia a mensagem do usuario ao modelo Claude com as definicoes de ferramentas.
+2. Verifica `response.stop_reason`:
+   - `"end_turn"` → extrai o texto e retorna.
+   - `"tool_use"` → executa as ferramentas solicitadas, adiciona os resultados ao historico e volta ao passo 1.
 
-As ferramentas expostas ao modelo sao:
+```python
+while True:
+    response = client.messages.create(**params, messages=messages)
 
-| Ferramenta | Funcao |
-|---|---|
-| `get_customer` | Busca dados do cliente pelo ID |
-| `lookup_order` | Busca dados do pedido |
-| `process_refund` | Processa reembolso |
+    if response.stop_reason == "end_turn":
+        return response
 
-## Regras de negocio implementadas
+    elif response.stop_reason == "tool_use":
+        # executa ferramentas e adiciona tool_results ao historico
+        ...
+```
 
-- `process_refund` so deve seguir apos verificacao do cliente.
-- Cliente com status `bloqueado` nao pode receber reembolso.
-- `pre_tool_hook()` bloqueia qualquer reembolso acima de `500`.
-- Erros retornam um objeto estruturado com `errorCategory`, `isRetryable`, `message` e `action`.
+---
 
-Exemplo de erro estruturado:
+## Etapa 2 — Ferramentas com descricoes diferenciadas
+
+Cada ferramenta tem uma descricao estruturada com tres secoes para guiar o modelo na escolha correta:
+
+- **Use:** quando usar a ferramenta
+- **Nao use:** casos em que ela nao deve ser chamada
+- **Exemplo:** exemplo de pedido do usuario que aciona a ferramenta
 
 ```python
 {
-    "errorCategory": "validation",
-    "isRetryable": False,
-    "message": "Cliente ID-999 nao encontrado",
-    "action": "Informe ao usuario que o cliente nao foi encontrado..."
+    "name": "get_customer",
+    "description": """Use: para obter informacoes do cliente como nome, status, email
+                        Nao use: para buscar pedidos ou executar acoes
+                        Exemplo: qual status do cliente ID-456""",
+    ...
 }
 ```
 
-## Comportamento observado na revisao
+As quatro ferramentas expostas ao modelo:
 
-Durante a revisao do codigo e dos testes, estes pontos ficaram claros:
+| Ferramenta | Funcao |
+|------------|--------|
+| `get_customer` | Busca dados do cliente pelo ID |
+| `lookup_order` | Busca dados do pedido |
+| `process_refund` | Processa reembolso |
+| `escalate_to_human` | Escala o caso para um agente humano |
 
-- O prompt de sistema existe em `SYSTEM_PROMPT`, mas `run_agent()` so o usa quando o chamador passa `system=...`.
-- O hook de valor roda antes da logica de verificacao do cliente, entao qualquer reembolso acima de `500` e bloqueado imediatamente.
-- O caminho de sucesso real hoje exige cliente valido, cliente ativo e valor de reembolso menor ou igual a `500`.
-- A simulacao de `process_refund()` so reconhece o pedido `123456`.
-- A resposta mockada de `process_refund()` para sucesso devolve `amount: 3000`, independentemente do valor solicitado. Isso e uma limitacao atual do mock.
-- O repositorio possui testes em [tests/test_agent.py](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\tests\test_agent.py), mas `pytest` nao esta listado em [requirements.txt](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\requirements.txt).
+---
+
+## Etapa 3 — Erros estruturados + prerequisite gate
+
+### Erros estruturados
+
+Todas as funcoes de ferramenta retornam um objeto padronizado em caso de falha, com quatro campos que o modelo usa para decidir o proximo passo:
+
+```python
+{
+    "errorCategory": "validation" | "business" | "transient",
+    "isRetryable": True | False,
+    "message": "descricao do erro",
+    "action": "instrucao para o modelo sobre o que fazer"
+}
+```
+
+Categorias:
+
+| Categoria | Significado | Retentavel |
+|-----------|-------------|------------|
+| `validation` | ID nao existe, dado invalido | Nao |
+| `business` | Regra de negocio violada (cliente bloqueado, limite excedido) | Nao |
+| `transient` | Falha temporaria de infraestrutura | Sim (ver Etapa 5.5) |
+
+### Prerequisite gate
+
+`execute_tool()` em [app/agent.py](app/agent.py) bloqueia `process_refund` se o cliente ainda nao foi verificado nessa sessao:
+
+```python
+if tool_name == "process_refund":
+    if not client_verification:
+        return {
+            "errorCategory": "validation",
+            "isRetryable": False,
+            "message": "Cliente nao verificado. ...",
+            ...
+        }
+    elif verified_customer_data.get("status") == "bloqueado":
+        return {
+            "errorCategory": "business",
+            ...
+        }
+```
+
+O estado de verificacao e mantido em variaveis locais de `run_agent()` e atualizado apos um `get_customer` bem-sucedido:
+
+```python
+if block.name == "get_customer" and "errorCategory" not in result:
+    client_verification = True
+    verified_customer_data = result
+```
+
+---
+
+## Etapa 4 — PreToolUse hook por threshold
+
+`pre_tool_hook()` e chamado dentro de `execute_tool()` antes de qualquer ferramenta rodar. Bloqueia reembolsos acima de `500`:
+
+```python
+def pre_tool_hook(tool_name: str, tool_input: dict) -> dict | None:
+    amount = tool_input.get("amount")
+    if tool_name == "process_refund" and amount > 500:
+        return {
+            "errorCategory": "business",
+            "isRetryable": False,
+            "message": f"Valor do reembolso {amount} excede o limite permitido de 500.",
+            "action": "Informe ao usuario que o valor excede o limite e sugira escalar para suporte."
+        }
+    return None
+```
+
+Se o hook retornar um objeto, `execute_tool()` retorna esse objeto imediatamente sem executar a ferramenta real. O modelo recebe o erro e decide escalar ou informar o usuario.
+
+---
+
+## Etapa 5 — Escalacao com handoff estruturado
+
+A ferramenta `escalate_to_human` aceita um payload rico para que o agente humano receba contexto completo sem precisar reler o historico:
+
+```python
+{
+    "name": "escalate_to_human",
+    "input_schema": {
+        "properties": {
+            "customer_id":        {"type": "string"},
+            "customer_name":      {"type": "string"},
+            "customer_status":    {"type": "string"},
+            "order_number":       {"type": "string"},
+            "amount":             {"type": "number"},
+            "root_cause":         {"type": "string"},
+            "recommended_action": {"type": "string"}
+        },
+        "required": ["customer_id", "root_cause", "recommended_action"]
+    }
+}
+```
+
+Situacoes em que o modelo deve acionar a escalacao (descritas na descricao da ferramenta):
+- cliente bloqueado
+- valor acima do limite
+- politica ambigua
+- cliente solicita explicitamente falar com humano
+
+A implementacao imprime o handoff e retorna um `ticket_id`:
+
+```python
+def escalate_to_human(handoff_data: dict) -> dict:
+    # imprime resumo para a fila humana
+    return {"status": "escalated", "ticket_id": "TKT-001", ...}
+```
+
+---
+
+## Etapa 5.5 — Exponential backoff com jitter
+
+`execute_tool_with_retry()` envolve `execute_tool()` e reexecuta apenas quando o resultado e um erro `transient` com `isRetryable == True`:
+
+```python
+def execute_tool_with_retry(tool_name, tool_input, ..., max_retries=3):
+    for attempt in range(max_retries):
+        result = execute_tool(...)
+
+        if not (result.get("errorCategory") == "transient" and result.get("isRetryable")):
+            return result  # sucesso ou erro nao retentavel
+
+        if attempt < max_retries - 1:
+            wait = 2 ** attempt + random.uniform(0, 1)  # 1s, 2s, 4s + jitter
+            time.sleep(wait)
+
+    return {"errorCategory": "transient", "isRetryable": False, "message": "Servico indisponivel apos 3 tentativas", ...}
+```
+
+Apos esgotar as tentativas, retorna um erro `transient` com `isRetryable: False` para que o modelo escale para humano.
+
+---
+
+## Fluxo completo por cenario
+
+| Cenario | Caminho | Resultado |
+|---------|---------|-----------|
+| Reembolso sem verificar cliente | `process_refund` → gate bloqueia | erro `validation` |
+| Cliente bloqueado | `get_customer` → gate de status | erro `business` |
+| Valor acima de 500 | `process_refund` → `pre_tool_hook` | erro `business` |
+| Servico de pedidos indisponivel | `lookup_order` → backoff x3 | erro `transient` → escalacao |
+| Fluxo de sucesso | `get_customer` → `lookup_order` → `process_refund` | reembolso processado |
+
+---
 
 ## Estrutura do projeto
 
 ```text
 app/
-  agent.py
+  agent.py          # loop, ferramentas, gates, hook, backoff, escalacao
 tests/
-  test_agent.py
+  test_agent.py     # testes unitarios com mock da API
 requirements.txt
-setup_env.sh
+CLAUDE.md
 README.md
 ```
+
+---
 
 ## Requisitos
 
 - Python 3.10+
-- chave `ANTHROPIC_API_KEY`
-
-Dependencias atuais do projeto:
+- `ANTHROPIC_API_KEY` no arquivo `.env`
 
 ```text
 anthropic==0.84.0
 python-dotenv
 ```
 
-Para rodar os testes deste repositorio, instale tambem:
-
-```bash
-pip install pytest
-```
+---
 
 ## Instalacao
 
@@ -101,37 +250,33 @@ cd claude-agente-suporte-loop-agentico
 python -m venv venv
 ```
 
-Ativacao da virtualenv:
+Ativacao:
 
 - Linux/macOS: `source venv/bin/activate`
 - Windows PowerShell: `.\venv\Scripts\Activate.ps1`
-
-Instale as dependencias:
 
 ```bash
 pip install -r requirements.txt
 pip install pytest
 ```
 
-Crie um arquivo `.env` na raiz:
+Crie `.env` na raiz:
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Opcionalmente, use o script [setup_env.sh](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\setup_env.sh) em ambientes Unix-like para recriar a virtualenv e instalar dependencias.
+---
 
 ## Execucao
-
-Executar o script principal:
 
 ```bash
 python app/agent.py
 ```
 
-O bloco `__main__` roda alguns cenarios de exemplo e passa `system=SYSTEM_PROMPT`.
+O bloco `__main__` roda o cenario ativo (backoff por padrao). Para outros cenarios, descomente as linhas correspondentes no final de [app/agent.py](app/agent.py).
 
-Se quiser usar `run_agent()` diretamente, passe o prompt de sistema explicitamente para manter o comportamento esperado:
+Para usar `run_agent()` diretamente:
 
 ```python
 from app.agent import run_agent, SYSTEM_PROMPT
@@ -142,31 +287,18 @@ run_agent(
 )
 ```
 
+---
+
 ## Testes
-
-Suite atual:
-
-- [tests/test_agent.py](c:\Users\johns\Documents\Projetos\Claude Code Pratice\claude_certified\claude-agente-suporte-loop-agentico\tests\test_agent.py)
-
-Execucao:
 
 ```bash
 pytest -q tests
 ```
 
-Observacao importante: no ambiente revisado, `pytest` nao estava instalado nem no Python global nem na `venv`, entao a suite nao pode ser executada sem instalar essa dependencia antes.
+Cobertura atual em [tests/test_agent.py](tests/test_agent.py):
 
-## Cenarios coerentes com o codigo atual
-
-| Cenario | Entrada | Resultado esperado pelo codigo |
-|---|---|---|
-| Reembolso sem verificacao | `Processe reembolso de 200 para o pedido 123456` | bloqueio por cliente nao verificado |
-| Cliente bloqueado | `Sou a Maria ID-456, quero reembolso de 200 do pedido 123456` | bloqueio por regra de negocio |
-| Valor acima do limite | `Sou o Joao ID-123, quero reembolso de 1500 do pedido 123456` | bloqueio no `pre_tool_hook()` |
-| Fluxo permitido | `Sou o Joao ID-123, quero reembolso de 200 do pedido 123456` | tentativa de processamento com mock de sucesso |
-
-## Observacoes de manutencao
-
-- Ha sinais de problema de encoding em arquivos textuais exibidos no terminal atual.
-- Os testes documentam intencoes do fluxo, mas pelo menos um deles parece divergir da implementacao atual do hook de valor.
-- Se a intencao for usar este repositorio como referencia de arquitetura, vale alinhar mocks, testes e README antes de expandir o projeto.
+| Teste | Cenario |
+|-------|---------|
+| `test_a_refund_sem_cliente_verificado` | prerequisite gate bloqueia `process_refund` |
+| `test_b_cliente_bloqueado` | gate de status devolve erro `business` |
+| `test_c_reembolso_sucesso` | fluxo completo com cliente ativo e valor valido |

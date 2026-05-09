@@ -1,4 +1,6 @@
 import anthropic
+import random
+import time 
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -61,7 +63,28 @@ tools = [
             },
             "required": ["order_number", "amount"]
         }
+    },
+    {
+    "name": "escalate_to_human",
+    "description": """Use: quando não for possível resolver o caso automaticamente.
+                    Situações: cliente bloqueado, valor acima do limite, política ambígua, 
+                    cliente solicita explicitamente falar com humano.
+                    Não use: para casos que o agente consegue resolver autonomamente.
+                    Preencha todos os campos disponíveis para contexto completo ao agente humano.""",  # você escreve
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "customer_id":        {"type": "string"},
+            "customer_name":      {"type": "string"},
+            "customer_status":    {"type": "string"},
+            "order_number":       {"type": "string"},
+            "amount":             {"type": "number"},
+            "root_cause":         {"type": "string"},
+            "recommended_action": {"type": "string"}
+        },
+        "required": ["customer_id", "root_cause", "recommended_action"]
     }
+}
 ]
 
 def get_customer_info(customer_id: str) -> dict:
@@ -83,6 +106,14 @@ def get_customer_info(customer_id: str) -> dict:
 
 def get_order_info(order_number: str) -> dict:
     # Simula uma consulta a um banco de dados ou API externa
+    if random.random() < 0.4:  # Simula uma falha temporária com 10% de chance
+        return {
+            "errorCategory": "transient",
+            "isRetryable": True,
+            "message": f"Falha temporária ao buscar informações do pedido {order_number}",
+            "action": "Tente novamente em alguns instantes."
+        }
+    
     banco_fake = {
         "123456": {"produto": "Smartphone", "valor": 1500, "status_entrega": "entregue"},
         "654321": {"produto": "Notebook", "valor": 3000, "status_entrega": "em trânsito"},
@@ -127,6 +158,46 @@ def pre_tool_hook(tool_name: str, tool_input:dict) -> dict | None:
             }
     return None
 
+def escalate_to_human(handoff_data: dict) -> dict:
+    print("\n🚨 ESCALAÇÃO PARA HUMANO:")
+    print(f"  Cliente:  {handoff_data.get('customer_name')} ({handoff_data.get('customer_id')})")
+    print(f"  Motivo:   {handoff_data.get('root_cause')}")
+    print(f"  Ação:     {handoff_data.get('recommended_action')}")
+
+    return {
+        "status": "escalated",
+        "ticket_id": "TKT-001",
+        "message": "O caso foi escalado para um agente humano."
+    }
+
+def execute_tool_with_retry(
+        tool_name: str,
+        tool_input: dict,
+        client_verification: bool,
+        verified_customer_data: dict | None,
+        max_retries: int = 3
+    ) -> dict:
+    for attempt in range(max_retries):
+        result = execute_tool(tool_name, tool_input, client_verification, verified_customer_data)
+        
+        # se não é erro transient retryable → retorna imediatamente
+        if not (result.get("errorCategory") == "transient" and result.get("isRetryable") == True):
+            return result
+        
+        # se é erro transient retryable → espera e tenta novamente
+        if attempt < max_retries - 1:  # evita esperar após última tentativa
+            wait = 2 ** attempt + random.uniform(0, 1)  # tempo de espera exponencial 2, 4, 8 segundos + jitter aleatório
+            print(f"  ⏳ Tentativa {attempt + 1} falhou. Aguardando {wait}s...")
+            time.sleep(wait)
+
+    # esgotou tentativas → retorna erro para escalar
+    return {
+        "errorCategory": "transient",
+        "isRetryable": False,
+        "message": "Serviço indisponível após 3 tentativas",
+        "action": "Escale para agente humano informando falha no serviço de pedidos"
+    }
+
 def execute_tool(
         tool_name: str, 
         tool_input: dict, 
@@ -162,6 +233,10 @@ def execute_tool(
             }
         else:
             return process_refund(tool_input["order_number"], tool_input["amount"])
+    
+    elif tool_name == "escalate_to_human":
+        return escalate_to_human(tool_input)
+
         
 def add_user_message(messages, text):
     user_message = {"role": "user", "content": text}
@@ -208,7 +283,8 @@ def run_agent(
 
             for block in response.content:
                 if block.type == "tool_use":
-                    result = execute_tool(
+                    #result = execute_tool(
+                    result = execute_tool_with_retry(
                         tool_name = block.name,
                         tool_input = block.input,
                         client_verification = client_verification,
@@ -236,18 +312,24 @@ if __name__ == "__main__":
         "system": SYSTEM_PROMPT,
     }
 
-    print("--- TESTE A: reembolso sem verificar cliente primeiro ---")
-    run_agent("Processe reembolso de 1500 para o pedido 123456", **parameters)
+    # print("--- TESTE A: reembolso sem verificar cliente primeiro ---")
+    # run_agent("Processe reembolso de 1500 para o pedido 123456", **parameters)
 
-    print("--- TESTE B: cliente bloqueado tenta reembolso ---")
-    run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456", **parameters)
+    # print("--- TESTE B: cliente bloqueado tenta reembolso ---")
+    # run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456", **parameters)
 
-    print("--- TESTE C: cliente ativo consegue reembolso ---")
-    run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456", **parameters)
+    # print("--- TESTE C: cliente ativo consegue reembolso ---")
+    # run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456", **parameters)
 
-    # Hooks
-    print("--- TESTE HOOK A: reembolso acima de 500 (deve bloquear) ---")
-    run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456", **parameters)
+    # # Hooks
+    # print("--- TESTE HOOK A: reembolso acima de 500 (deve bloquear) ---")
+    # run_agent("Sou o João ID-123, quero reembolso de 1500 do pedido 123456", **parameters)
 
-    print("--- TESTE HOOK B: reembolso abaixo de 500 (deve processar) ---")
-    run_agent("Sou o João ID-123, quero reembolso de 200 do pedido 123456", **parameters)
+    # print("--- TESTE HOOK B: reembolso abaixo de 500 (deve processar) ---")
+    # run_agent("Sou o João ID-123, quero reembolso de 200 do pedido 123456", **parameters)
+
+    # print("--- TESTE ESCALAÇÃO: cliente bloqueado ---")
+    # run_agent("Sou a Maria ID-456, quero reembolso de 1500 do pedido 123456", **parameters)
+
+    print("--- TESTE BACKOFF: busca pedido com falha transient ---")
+    run_agent("Sou o João ID-123, quero saber o status do pedido 123456", **parameters)
